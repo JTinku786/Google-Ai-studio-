@@ -1,0 +1,6 @@
+{
+  "name": "Daily Routine",
+  "description": "A clean, modern daily routine app featuring a motivating quote card, Bhagavad Gita daily teachings, a resetting morning hygiene checklist, and a sequential trading preparation checklists under the 'Bread and Butter' strategy.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
