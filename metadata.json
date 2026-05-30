@@ -1,6 +1,6 @@
 {
-  "name": "Daily Routine",
-  "description": "A clean, modern daily routine app featuring a motivating quote card, Bhagavad Gita daily teachings, a resetting morning hygiene checklist, and a sequential trading preparation checklists under the 'Bread and Butter' strategy.",
+  "name": "Pratidinam AI",
+  "description": "A grounded personal lifestyle AI coach for daily discipline, health, and mental peace. Built for a Telangana background, it features a 10-step early morning checklist, local meal suggestion helpers, local GGUF NDK/JNI model administration with SAF importer, and high-fidelity wise offline fallbacks.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

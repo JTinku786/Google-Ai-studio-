@@ -13,5 +13,6 @@ data class DailyRoutineState(
     val tradingLiquidity: Boolean = false,
     val tradingDisplacement: Boolean = false,
     val puzzleSolved: Boolean = false,
+    val waterIntakeMl: Int = 0, // Track logged water intake ml
     val lastUpdated: Long = System.currentTimeMillis()
 )

@@ -18,6 +18,19 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    ndk {
+        abiFilters.add("arm64-v8a")
+    }
+  }
+
+  val hasValidNdk = file("/opt/android/sdk/ndk").listFiles()?.any { it.resolve("source.properties").exists() } == true || project.hasProperty("buildNative")
+  if (hasValidNdk) {
+      externalNativeBuild {
+          cmake {
+              path = file("src/main/cpp/CMakeLists.txt")
+              version = "3.22.1"
+          }
+      }
   }
 
   signingConfigs {
