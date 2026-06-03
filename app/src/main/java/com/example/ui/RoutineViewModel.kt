@@ -11,6 +11,13 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.random.Random
 
+data class CoachMode(
+    val id: String,
+    val name: String,
+    val description: String,
+    val systemPrompt: String
+)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoutineViewModel(private val repository: RoutineRepository) : ViewModel() {
 
@@ -87,6 +94,98 @@ class RoutineViewModel(private val repository: RoutineRepository) : ViewModel() 
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    // --- Onboarded State ---
+    val isOnboarded: StateFlow<Boolean> = userProfile
+        .map { it.isOnboarded }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
+    // --- Daily Mission for currentDate ---
+    val dailyMission: StateFlow<DailyMission> = _currentDate
+        .flatMapLatest { date ->
+            repository.getDailyMission(date).map { it ?: repository.getOrCreateDailyMissionDirect(date, userProfile.value) }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = DailyMission(date = getTodayDateKey())
+        )
+
+    // --- Night Audit for currentDate ---
+    val nightAudit: StateFlow<NightAudit> = _currentDate
+        .flatMapLatest { date ->
+            repository.getNightAudit(date).map { it ?: repository.getOrCreateNightAuditDirect(date) }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = NightAudit(date = getTodayDateKey())
+        )
+
+    // --- Reminder Settings ---
+    val reminderSettings: StateFlow<ReminderSettings> = repository.getReminderSettingsFlow()
+        .map { it ?: repository.getOrCreateReminderSettings() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = ReminderSettings()
+        )
+
+    // --- Premium Coach Modes ---
+    val coachModes = listOf(
+        CoachMode(
+            id = "warrior",
+            name = "Warrior Discipline",
+            description = "Strict elder brother style. Break excuses and win the morning.",
+            systemPrompt = "You are a warrior-discipline guru (strict Telugu elder brother). Break lethargy. Urge Tammudu/Chelli to wake up early, tackle hardest tasks first, cold showers, zero excuses, and win the morning by 9 AM. Keep it direct, firm, and supportive."
+        ),
+        CoachMode(
+            id = "food",
+            name = "Telugu Food Coach",
+            description = "Traditional local wisdom for healthy millet-based eating.",
+            systemPrompt = "You are a friendly Telugu nutrition coach. Advise on simple healthy eating: Jowar Roti, Ragi Java, leafy vegetables, clay-pot water, ending food by 8 PM, avoiding deep fries, refined maida, and eating with mindfulness. Comforting local tone."
+        ),
+        CoachMode(
+            id = "gita",
+            name = "Gita & Peace",
+            description = "Quotes and serene wisdom from the Bhagavad Gita.",
+            systemPrompt = "You are a serene spiritual mentor guiding with Gita wisdom. Emphasize Chapter 2, Verse 47: focusing completely on action (Karma) without anxiety over outcomes. Guide the mind out of stress, frustration, and worry into quiet clarity."
+        ),
+        CoachMode(
+            id = "chitkalu",
+            name = "Mana Chitkalu",
+            description = "Age-old traditional health, home, and focus remedies.",
+            systemPrompt = "You are an expert on 'Mana Chitkalu' (traditional Telugu life tips). Teach beneficial daily habits: morning hydration, coconut oil benefits, natural focus builders, breathing rituals, and maintaining organic balance in lifestyle."
+        ),
+        CoachMode(
+            id = "founder",
+            name = "Founder Mode",
+            description = "High-productivity startup CTO partner for deep focus.",
+            systemPrompt = "You are a hyper-focused startup CTO/founder discipline partner. Direct, fast-paced, high intellectual density. Push for Pomodoro deep blocks, zero notifications, shipping code/deals early, and executing daily sprints with strict momentum."
+        ),
+        CoachMode(
+            id = "trader",
+            name = "Trader Discipline",
+            description = "Emotional balance and strict rule-based market mind.",
+            systemPrompt = "You are a strict risk-management and trading coach. Advise on absolute emotional grounding: never overtrade, honor stop-losses, preserve liquid capital, maintain high mental stability, and sleep on time to keep sharpness active."
+        ),
+        CoachMode(
+            id = "fitness",
+            name = "Fitness Comeback",
+            description = "High-energy coach for healthy movement and physical power.",
+            systemPrompt = "You are an energetic, high-octane athletic trainer leading a major fitness comeback. Push for consistent physical exercise, regular hydration, bodyweight circuits, high posture focus, and building a powerful physical temple."
+        )
+    )
+
+    private val _testAiResult = MutableStateFlow<String>("")
+    val testAiResult: StateFlow<String> = _testAiResult.asStateFlow()
+
+    private val _isTestingAi = MutableStateFlow(false)
+    val isTestingAi: StateFlow<Boolean> = _isTestingAi.asStateFlow()
 
     // --- Rich Daily Content (Rotated or AI generated) ---
     val dailyContent: StateFlow<DailyContent> = _currentDate
@@ -199,6 +298,9 @@ class RoutineViewModel(private val repository: RoutineRepository) : ViewModel() 
             repository.preseedContactsIfEmpty()
             repository.getOrCreateRoutineStateDirect(getTodayDateKey())
             repository.getOrCreateDailyContentDirect(getTodayDateKey())
+            repository.getOrCreateDailyMissionDirect(getTodayDateKey(), profile)
+            repository.getOrCreateNightAuditDirect(getTodayDateKey())
+            repository.getOrCreateReminderSettings()
 
             // Attempt auto load if user left a GGUF model loaded earlier
             if (profile.selectedGgufPath.isNotEmpty()) {
@@ -282,6 +384,19 @@ class RoutineViewModel(private val repository: RoutineRepository) : ViewModel() 
     fun removeHabit(id: Long) {
         viewModelScope.launch {
             repository.deleteHabit(id)
+        }
+    }
+
+    fun toggleHardestTask(completed: Boolean) {
+        viewModelScope.launch {
+            val dateKey = _currentDate.value
+            val profile = userProfile.value
+            val m = repository.getOrCreateDailyMissionDirect(dateKey, profile)
+            val updated = m.copy(
+                hardestTaskCompleted = completed,
+                disciplineScore = (m.disciplineScore + if (completed) 25 else -25).coerceIn(0, 100)
+            )
+            repository.saveDailyMission(updated)
         }
     }
 
@@ -383,12 +498,33 @@ class RoutineViewModel(private val repository: RoutineRepository) : ViewModel() 
 
         _isChatGenerating.value = true
 
+        val mode = coachModes.find { it.name == coachRole || it.id == coachRole.lowercase() } ?: coachModes[0]
+        val currentM = dailyMission.value
+        val currentA = nightAudit.value
+        val mealsStr = mealLogs.value.take(2).joinToString { it.description }
+        val habitsCount = activeHabits.value.size
+        val logsDone = habitLogs.value.count { it.status == "Completed" }
+        val donePct = if (habitsCount > 0) (logsDone * 100) / habitsCount else 100
+
+        val chatContext = """
+            [USER ON-DEVICE CONTEXT]
+            User: ${profile.name} (Type: ${profile.lifeIdentity})
+            Routines: Wake: ${profile.wakeUpTime} / Sleep: ${profile.sleepTime}
+            Water target: ${profile.waterGoalMl} ml
+            7-day Goal: ${profile.mainSevenDayGoal}
+            Weakness: ${profile.biggestWeakness}
+            Today's Mission Status: ${if (currentM.isGenerated) "Command: " + currentM.aiMorningCommand.take(100) + "..." else "Standard"}
+            Habits done today: $donePct% completed
+            Recent eating log: $mealsStr
+            Current Selected Coach Mode: ${mode.name}
+
+            Rules: Speak with confidence. Address them respectfully. Keep answers under 4 lines.
+        """.trimIndent()
+
         val systemPrompt = """
-            You are a grounded personal lifestyle AI coach specifically styled as '${coachRole}'.
-            Your purpose is to improve the user's discipline, health, mental peace, learning, financial literacy, and social/family habits.
-            Be practical, wise, and culturally comforting to a Telangana/Telugu background user named '${profile.name}'.
-            Keep responses short, actionable, and visually clear. Do not provide diagnostic medical warnings, or personalized banking financial advice.
-            Respect Telugu traditions while staying rational. Speak with calm strength.
+            ${mode.systemPrompt}
+
+            $chatContext
         """.trimIndent()
 
         viewModelScope.launch {
@@ -406,15 +542,41 @@ class RoutineViewModel(private val repository: RoutineRepository) : ViewModel() 
                     finalResponse = result.text
                     _lastGenerationLatency.value = result.latencyMs
                 } else {
-                    finalResponse = generateOfflineResponseFallback(text, coachRole) + "\n\n💡 (Local GGUF engine error: ${result.errorMessage}. Loaded offline fallback.)"
+                    finalResponse = generateOfflineResponseFallbackForMode(text, mode.id) + "\n\n💡 (Local model load failed: ${result.errorMessage}. Loaded offline fallback.)"
                 }
             } else {
-                finalResponse = generateOfflineResponseFallback(text, coachRole) + "\n\n💡 (Local GGUF model is not loaded in Settings. Loaded offline fallback.)"
+                finalResponse = generateOfflineResponseFallbackForMode(text, mode.id) + "\n\n💡 (Model not loaded. Go to Settings/Private Local AI Engine to select a GGUF file. Loaded offline fallback.)"
             }
             val updatedHistory = _chatHistory.value.toMutableList()
             updatedHistory.add(Pair("assistant", finalResponse))
             _chatHistory.value = updatedHistory
             _isChatGenerating.value = false
+        }
+    }
+
+    fun regenerateLastMessage(coachRole: String) {
+        val currentHistory = _chatHistory.value
+        if (currentHistory.size < 2) return
+        val lastUserMessage = currentHistory.lastOrNull { it.first == "user" }?.second ?: return
+        val updatedHistory = currentHistory.toMutableList()
+        if (updatedHistory.last().first == "assistant") {
+            updatedHistory.removeAt(updatedHistory.size - 1)
+        }
+        _chatHistory.value = updatedHistory
+        submitChatMessage(lastUserMessage, coachRole)
+    }
+
+    private fun generateOfflineResponseFallbackForMode(query: String, modeId: String): String {
+        val profile = userProfile.value
+        return when (modeId) {
+            "warrior" -> "Listen Tammudu ${profile.name}, focus is built upon rigid daily routines, not fleeting emotions. Your weakness is listed as '${profile.biggestWeakness}', which means we must eliminate digital scrolling or lazy behaviors immediately. Hydrate with ${profile.waterGoalMl}ml, rise early, and knock out your hardest tasks before seeking comfort."
+            "food" -> "Greetings Tammudu! Since we are offline, let's stick to our local traditional wisdom: start your day with warm Ragi Java with crushed almonds. For lunch, prefer healthy millet rice or Jowar Roti with curry. Ensure you close your last meal before 8 PM to give your system ample rest."
+            "gita" -> "In times of doubt, refer to Chapter 2, Verse 47 of the Gita: 'Karmanye vadhikaraste ma phaleshu kadachana...' Put your absolute energy into doing your duties properly without anxious anticipation of rewards. Let your work be your worship today."
+            "chitkalu" -> "Here is a useful traditional Telugu life tip: Sip warm ginger-water throughout the day to boost digestion, rising early to do 5 minutes of deep breathing before checking any notifications, and store your water in a clay pot for natural mineral coolant."
+            "founder" -> "CTO workspace alignment: No side meetings before 12 PM. Block out at least a 2-hour uninterrupted deep sprint on your core business/coding deliverable today. Speed of execution and zero notifications are the key multipliers."
+            "trader" -> "Market discipline protocol: Never enter a trade with emotional impulse. Always write down your entry triggers and exit stop-losses. Preserve your capital, avoid overtrading, and keep a cool head. Risk management is everything."
+            "fitness" -> "Lethargy ends now! Set a timer for 20 minutes right now. Execute 3 rounds of bodyweight squats, pushups, and high planks. Feed the physical vessel of your life with consistent, active movement!"
+            else -> "Hello ${profile.name}! Keep hydrated, log your daily habits, and commit to completing your evening audit reflection to measure results. Small compounding achievements lead to massive transformations."
         }
     }
 
@@ -570,6 +732,432 @@ class RoutineViewModel(private val repository: RoutineRepository) : ViewModel() 
     }
 
     // --- State and Formatting Helpers ---
+
+    private val _isMissionGenerating = MutableStateFlow(false)
+    val isMissionGenerating: StateFlow<Boolean> = _isMissionGenerating.asStateFlow()
+
+    private val _isAuditGenerating = MutableStateFlow(false)
+    val isAuditGenerating: StateFlow<Boolean> = _isAuditGenerating.asStateFlow()
+
+    fun submitOnboarding(
+        name: String,
+        lifeIdentity: String,
+        wake: String,
+        sleep: String,
+        water: Int,
+        mainGoal: String,
+        weakness: String,
+        tone: String,
+        lang: String
+    ) {
+        viewModelScope.launch {
+            val old = userProfile.value
+            val updated = old.copy(
+                name = name,
+                lifeIdentity = lifeIdentity,
+                wakeUpTime = wake,
+                sleepTime = sleep,
+                waterGoalMl = water,
+                mainSevenDayGoal = mainGoal,
+                biggestWeakness = weakness,
+                preferredCoachTone = tone,
+                preferredLanguage = lang,
+                isOnboarded = true
+            )
+            repository.updateUserProfile(updated)
+            generateTransformationPlan(updated)
+        }
+    }
+
+    fun updateOnboardingAnswers(
+        lifeIdentity: String,
+        mainGoal: String,
+        weakness: String,
+        tone: String,
+        lang: String
+    ) {
+        viewModelScope.launch {
+            val old = userProfile.value
+            val updated = old.copy(
+                lifeIdentity = lifeIdentity,
+                mainSevenDayGoal = mainGoal,
+                biggestWeakness = weakness,
+                preferredCoachTone = tone,
+                preferredLanguage = lang
+            )
+            repository.updateUserProfile(updated)
+        }
+    }
+
+    private fun generateTransformationPlan(profile: UserProfile) {
+        _isPlanGenerating.value = true
+        val prompt = """
+            Make a professional, strict 7-Day Lifestyle Transformation Plan for ${profile.name}.
+            Identity Context: ${profile.lifeIdentity}
+            Wake Up: ${profile.wakeUpTime}
+            Sleep/Wind-down: ${profile.sleepTime}
+            Weekly Goal: ${profile.mainSevenDayGoal}
+            Biggest Weakness: ${profile.biggestWeakness}
+            Coach Tone: ${profile.preferredCoachTone}
+            Language Mode: ${profile.preferredLanguage}
+            
+            Synthesize a brief 7-day milestone guide (Day 1-2, Day 3-5, Day 6-7) to optimize their specific lifestyle. Keep it powerful and concise.
+        """.trimIndent()
+
+        val systemPrompt = "You are a master life strategist and personal guru. Draft brief but strict lifestyle transformation paths."
+
+        viewModelScope.launch {
+            var fullPlan = ""
+            if (_isModelLoaded.value) {
+                val result = llmProvider.generate(
+                    LlmRequest(
+                        systemPrompt = systemPrompt,
+                        userPrompt = prompt,
+                        maxTokens = profile.ggufMaxTokens * 2,
+                        temperature = profile.ggufTemperature
+                    )
+                )
+                if (result.success) {
+                    fullPlan = result.text
+                    _lastGenerationLatency.value = result.latencyMs
+                } else {
+                    fullPlan = getTransformationPlanFallback(profile)
+                }
+            } else {
+                fullPlan = getTransformationPlanFallback(profile)
+            }
+            _aiPlanOutput.value = fullPlan
+            saveJournal("Plan", fullPlan, "Motivated", 8)
+            _isPlanGenerating.value = false
+        }
+    }
+
+    private fun getTransformationPlanFallback(profile: UserProfile): String {
+        return """
+            🔥 **YOUR PRIVATE 7-DAY TRANSFORMATION PLAN (${profile.lifeIdentity.uppercase()})**
+            *Designed specifically for ${profile.name} to target: ${profile.biggestWeakness}*
+            
+            • **Days 1 - 2: Foundation & Shock Therapy**
+              - Rise exactly at ${profile.wakeUpTime}. Hydrate immediately with 500ml of clean cell-water.
+              - Execute the 'Hardest Task First' morning block before opening any social messaging.
+              - Begin water goal tracking towards ${profile.waterGoalMl} ml.
+            
+            • **Days 3 - 5: Consolidating Habits & Friction Removal**
+              - Eliminate digital distractions. Place your phone outside of the bedroom before ${profile.sleepTime}.
+              - Focus on specific meals: light grains like local Ragi Java for stable focus, light dinings.
+              - Touch base with relationships. Execute one scheduled contact reminder call.
+            
+            • **Days 6 - 7: Reflection & Standardizing Life**
+              - Complete daily evening audits to score metrics.
+              - Finalize the week with a clear understanding of what caused deviations (e.g., ${profile.biggestWeakness}).
+              - Anchor your daily routines in consistent, recurring blocks that require zero willpower.
+        """.trimIndent()
+    }
+
+    fun generateDailyMission() {
+        val profile = userProfile.value
+        val dateKey = _currentDate.value
+        _isMissionGenerating.value = true
+
+        val prompt = """
+            Create today's daily missions for ${profile.name}.
+            Identity: ${profile.lifeIdentity}
+            Wake time: ${profile.wakeUpTime}
+            Sleep wind-down: ${profile.sleepTime}
+            Water target: ${profile.waterGoalMl} ml
+            7-day Goal: ${profile.mainSevenDayGoal}
+            Biggest Weakness: ${profile.biggestWeakness}
+            Preferred Tone: ${profile.preferredCoachTone}
+            Language: ${profile.preferredLanguage}
+            
+            Return a short response using active, powerful instruction. Provide:
+            - AI Command Message (Direct command based on their weakness and tone)
+            - Hardest Task For Today
+            - Top 3 Specific Missions for today
+            - One Wisdom Quote or Gita verse line
+            - One Daily Food suggestion
+            - One Family Connection note
+            Keep it deeply motivating and high impact!
+        """.trimIndent()
+
+        val systemPrompt = "You are a master productivity coach. Craft high-discipline lifestyle guidelines."
+
+        viewModelScope.launch {
+            if (_isModelLoaded.value) {
+                val result = llmProvider.generate(
+                    LlmRequest(
+                        systemPrompt = systemPrompt,
+                        userPrompt = prompt,
+                        maxTokens = profile.ggufMaxTokens * 2,
+                        temperature = profile.ggufTemperature
+                    )
+                )
+                if (result.success) {
+                    _lastGenerationLatency.value = result.latencyMs
+                    val text = result.text
+                    val currentM = repository.getOrCreateDailyMissionDirect(dateKey, profile)
+                    val updatedM = currentM.copy(
+                        aiMorningCommand = text,
+                        missionOne = "Focus uninterrupted on your core priority",
+                        missionTwo = "Acknowledge and avoid ${profile.biggestWeakness}",
+                        missionThree = "Drink ${profile.waterGoalMl} ml water & connect with family",
+                        hardestTask = "Tackle biggest priority block in the morning",
+                        wisdomQuote = "Focus fully on action, never on anxiety. — Bhagavad Gita",
+                        familyReminder = "Remind yourself to call family or check in.",
+                        foodSuggestion = "Light traditional nutrition like ragi java or cooked millets.",
+                        isGenerated = true
+                    )
+                    repository.saveDailyMission(updatedM)
+                } else {
+                    useOfflineMissionFallback(profile, dateKey)
+                }
+            } else {
+                useOfflineMissionFallback(profile, dateKey)
+            }
+            _isMissionGenerating.value = false
+        }
+    }
+
+    private suspend fun useOfflineMissionFallback(profile: UserProfile, dateKey: String) {
+        val currentM = repository.getOrCreateDailyMissionDirect(dateKey, profile)
+        val tone = profile.preferredCoachTone.lowercase()
+
+        val coachCommand = when {
+            tone.contains("strict") -> {
+                "${profile.name}, today is not for standard excuses. Your biggest weakness is ${profile.biggestWeakness} and that ends today. Rise exactly at ${profile.wakeUpTime}, block all phone scrolling until noon, and drink 500 ml of water immediately. Win this morning."
+            }
+            tone.contains("spiritual") -> {
+                "Perform your actions with total mindfulness, ${profile.name}. Do not worry about long-term results, focus completely on the execution of your Karma today. Maintain peace, stay hydrated, and stay disciplined."
+            }
+            tone.contains("brother") -> {
+                "Listen bro, we need to step up today. Put that phone in another room. Let's hit our ${profile.waterGoalMl}ml water goal and knock out the hardest task by noon. You've got this, no slacking!"
+            }
+            tone.contains("founder") -> {
+                "Founder Mode active. Today's target: complete your high-leverage block first. Zero distractions. Avoid ${profile.biggestWeakness}, consume clean energy, and connect briefly with family. Let's ship results."
+            }
+            else -> {
+                "Focus on small compounding victories today, ${profile.name}. Prioritize hydration, stay calm, and execute your routine steadily."
+            }
+        }
+
+        val updatedM = currentM.copy(
+            aiMorningCommand = coachCommand,
+            hardestTask = when {
+                profile.biggestWeakness.lowercase().contains("phone") -> "Unplug phone and work 90 minutes uninterrupted"
+                profile.biggestWeakness.lowercase().contains("laziness") -> "Do 25 minutes of physical activity and cold shower"
+                else -> "Complete your most difficult professional/study/workout task first thing"
+            },
+            missionOne = "Execute morning work sprint without opening notifications",
+            missionTwo = "Track and log meals & water intake carefully",
+            missionThree = "Make a meaningful family connection check-in",
+            wisdomQuote = "Karmanye vadhikaraste ma phaleshu kadachana. — Bhagavad Gita",
+            familyReminder = "Check your Contact Reminders to greet close ones today.",
+            foodSuggestion = "Fuel with traditional Ragi Java and raw almonds to maximize focus.",
+            isGenerated = true
+        )
+        repository.saveDailyMission(updatedM)
+    }
+
+    fun updateNightAuditMetrics(
+        wokeOnTime: Boolean,
+        hardestTaskCompleted: Boolean,
+        waterConsumedMl: Int,
+        foodQuality: String,
+        mood: String,
+        energyLevel: Int,
+        whatWentWell: String,
+        whatFailed: String,
+        oneThingToImprove: String
+    ) {
+        viewModelScope.launch {
+            val dateKey = _currentDate.value
+            val profile = userProfile.value
+            _isAuditGenerating.value = true
+
+            val wakePoints = if (wokeOnTime) 15 else 0
+            val taskPoints = if (hardestTaskCompleted) 25 else 0
+            val waterPoints = if (waterConsumedMl >= profile.waterGoalMl) 15 else ((waterConsumedMl.toFloat() / profile.waterGoalMl.toFloat()) * 15).toInt().coerceIn(0, 15)
+            
+            val habitsList = activeHabits.value
+            val loggedHabits = habitLogs.value
+            val totalHabits = habitsList.size
+            val completedHabits = loggedHabits.count { it.status == "Completed" }
+            val habitRatio = if (totalHabits > 0) completedHabits.toFloat() / totalHabits.toFloat() else 1.0f
+            val habitPoints = (habitRatio * 20).toInt().coerceIn(0, 20)
+
+            val foodPoints = when (foodQuality) {
+                "Great" -> 10
+                "Good" -> 8
+                "Okay" -> 4
+                else -> 0
+            }
+            
+            val reflectionPoints = 10
+            val familyPoints = 5 
+
+            val totalScore = (wakePoints + taskPoints + waterPoints + habitPoints + foodPoints + reflectionPoints + familyPoints).coerceIn(0, 100)
+
+            val prompt = """
+                Analyze today's results for ${profile.name}:
+                Score achieved: $totalScore/100
+                Woke on time: $wokeOnTime
+                Hardest task completed: $hardestTaskCompleted
+                Water tracker: $waterConsumedMl / ${profile.waterGoalMl} ml
+                Food logged: $foodQuality quality
+                Energy Level: $energyLevel / 10
+                What went well: $whatWentWell
+                What failed/distracted: $whatFailed
+                One focus for tomorrow: $oneThingToImprove
+                
+                Generate a strict but loving review and action item correction for tomorrow. Keep it short (3-4 sentences), bold, and in their selected tone of ${profile.preferredCoachTone}.
+            """.trimIndent()
+
+            val systemPrompt = "You are a highly analytical local lifestyle supervisor. Review metrics strictly and provide tomorrow's adjustment."
+
+            var reflectionText = ""
+            var tomorrowCorrectionText = ""
+
+            if (_isModelLoaded.value) {
+                val result = llmProvider.generate(
+                    LlmRequest(
+                        systemPrompt = systemPrompt,
+                        userPrompt = prompt,
+                        maxTokens = profile.ggufMaxTokens,
+                        temperature = profile.ggufTemperature
+                    )
+                )
+                if (result.success) {
+                    _lastGenerationLatency.value = result.latencyMs
+                    reflectionText = result.text
+                    tomorrowCorrectionText = "Focus priority: $oneThingToImprove. Put phone away before sleeping!"
+                } else {
+                    reflectionText = getOfflineAuditFeedback(totalScore, profile, whatWentWell, whatFailed)
+                    tomorrowCorrectionText = "Correction mandate: avoid $whatFailed tomorrow. Tackle first thing."
+                }
+            } else {
+                reflectionText = getOfflineAuditFeedback(totalScore, profile, whatWentWell, whatFailed)
+                tomorrowCorrectionText = "Correction mandate: avoid $whatFailed tomorrow. Tackle first thing."
+            }
+
+            val audit = NightAudit(
+                date = dateKey,
+                wokeUpOnTime = wokeOnTime,
+                hardestTaskCompleted = hardestTaskCompleted,
+                waterConsumedMl = waterConsumedMl,
+                foodQuality = foodQuality,
+                mood = mood,
+                energyLevel = energyLevel,
+                whatWentWell = whatWentWell,
+                whatFailed = whatFailed,
+                oneThingToImprove = oneThingToImprove,
+                aiReflection = reflectionText,
+                tomorrowCorrection = tomorrowCorrectionText,
+                isCompleted = true
+            )
+            repository.saveNightAudit(audit)
+
+            val currentMission = repository.getOrCreateDailyMissionDirect(dateKey, profile)
+            val updatedMission = currentMission.copy(
+                disciplineScore = totalScore,
+                waterConsumedMl = waterConsumedMl,
+                hardestTaskCompleted = hardestTaskCompleted
+            )
+            repository.saveDailyMission(updatedMission)
+
+            saveJournal("Reflection", "Score: $totalScore\nReflection: $reflectionText\nTomorrow focus: $tomorrowCorrectionText", mood, energyLevel)
+
+            _isAuditGenerating.value = false
+        }
+    }
+
+    private fun getOfflineAuditFeedback(score: Int, profile: UserProfile, well: String, failed: String): String {
+        return when {
+            score >= 85 -> "Outstanding day, ${profile.name}! You scored $score/100. Excellent progress: you woke up on time and knocked out your hardest task, building incredible momentum. Keep this absolute focus compounding."
+            score >= 60 -> "Decent effort today, ${profile.name}, scoring $score/100. You showed discipline on routines, but your focus leaked. You need to address the blockers: $failed. Tomorrow, eliminate that single point of failure."
+            else -> "A difficult day, ${profile.name}, scoring $score/100. This is a temporary detour, not defeat. If you slipped due to $failed, make sure to put the phone away and do your wake up hydration. Tomorrow is yours."
+        }
+    }
+
+    fun testLocalAi() {
+        if (!_isModelLoaded.value) {
+            _testAiResult.value = "Local GGUF engine is not loaded!"
+            return
+        }
+        _isTestingAi.value = true
+        _testAiResult.value = "Testing local GGUF..."
+        viewModelScope.launch {
+            val result = llmProvider.generate(
+                LlmRequest(
+                    systemPrompt = "You are a simple test validator.",
+                    userPrompt = "Reply in one short line: GGUF model is working.",
+                    maxTokens = 40,
+                    temperature = 0.3f
+                )
+            )
+            _isTestingAi.value = false
+            if (result.success) {
+                _testAiResult.value = "${result.text} (Latency: ${result.latencyMs} ms)"
+            } else {
+                _testAiResult.value = "Test failed: ${result.errorMessage}"
+            }
+        }
+    }
+
+    fun resetOnboarding() {
+        viewModelScope.launch {
+            val old = userProfile.value
+            repository.updateUserProfile(old.copy(isOnboarded = false))
+        }
+    }
+
+    fun deleteAllLocalData() {
+        viewModelScope.launch {
+            val old = userProfile.value
+            repository.updateUserProfile(old.copy(isOnboarded = false, selectedGgufPath = ""))
+            unloadLocalLlamaModel()
+            clearChat()
+        }
+    }
+
+    fun exportLocalData(onExport: (String) -> Unit) {
+        viewModelScope.launch {
+            val p = userProfile.value
+            val text = """
+                =============== PRATIDINAM AI DATA EXPORT ===============
+                User: ${p.name}
+                Identity: ${p.lifeIdentity}
+                Wake: ${p.wakeUpTime} / Sleep: ${p.sleepTime}
+                7-Day Goal: ${p.mainSevenDayGoal}
+                Weakness: ${p.biggestWeakness}
+                Tone: ${p.preferredCoachTone}
+                Language Mode: ${p.preferredLanguage}
+                Subscription: ${p.subscriptionTier}
+                =========================================================
+            """.trimIndent()
+            onExport(text)
+        }
+    }
+
+    fun selectSubscriptionTier(tier: String) {
+        viewModelScope.launch {
+            val old = userProfile.value
+            repository.updateUserProfile(old.copy(subscriptionTier = tier))
+        }
+    }
+
+    fun saveReminderSettings(settings: ReminderSettings) {
+        viewModelScope.launch {
+            repository.saveReminderSettings(settings)
+        }
+    }
+
+    fun resetNightAudit() {
+        viewModelScope.launch {
+            val dateKey = _currentDate.value
+            val old = repository.getOrCreateNightAuditDirect(dateKey)
+            repository.saveNightAudit(old.copy(isCompleted = false))
+        }
+    }
 
     fun getTodayDateKey(): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)

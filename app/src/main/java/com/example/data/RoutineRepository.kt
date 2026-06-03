@@ -234,4 +234,75 @@ class RoutineRepository(private val dailyRoutineDao: DailyRoutineDao) {
     suspend fun deleteContactReminder(id: Long) {
         dailyRoutineDao.deleteContactReminder(id)
     }
+
+    // --- Daily Mission Methods ---
+    fun getDailyMission(date: String): Flow<DailyMission?> {
+        return dailyRoutineDao.getDailyMission(date)
+    }
+
+    suspend fun getOrCreateDailyMissionDirect(date: String, profile: UserProfile): DailyMission {
+        val existing = dailyRoutineDao.getDailyMissionDirect(date)
+        if (existing == null) {
+            val defaultMission = DailyMission(
+                date = date,
+                waterTargetMl = profile.waterGoalMl,
+                hardestTask = "Complete your morning focus session",
+                wisdomQuote = "Perform work without attachment.",
+                familyReminder = "Have you connected with Amma today?"
+            )
+            dailyRoutineDao.insertOrUpdateDailyMission(defaultMission)
+            return defaultMission
+        }
+        return existing
+    }
+
+    suspend fun saveDailyMission(mission: DailyMission) {
+        dailyRoutineDao.insertOrUpdateDailyMission(mission)
+    }
+
+    // --- Night Audit Methods ---
+    fun getNightAudit(date: String): Flow<NightAudit?> {
+        return dailyRoutineDao.getNightAudit(date)
+    }
+
+    suspend fun getOrCreateNightAuditDirect(date: String): NightAudit {
+        val existing = dailyRoutineDao.getNightAuditDirect(date)
+        if (existing == null) {
+            val defaultAudit = NightAudit(date = date)
+            dailyRoutineDao.insertOrUpdateNightAudit(defaultAudit)
+            return defaultAudit
+        }
+        return existing
+    }
+
+    suspend fun saveNightAudit(audit: NightAudit) {
+        dailyRoutineDao.insertOrUpdateNightAudit(audit)
+    }
+
+    fun getAllNightAudits(): Flow<List<NightAudit>> {
+        return dailyRoutineDao.getAllNightAudits()
+    }
+
+    suspend fun getAllNightAuditsDirect(): List<NightAudit> {
+        return dailyRoutineDao.getAllNightAuditsDirect()
+    }
+
+    // --- Reminder Settings Methods ---
+    fun getReminderSettingsFlow(): Flow<ReminderSettings?> {
+        return dailyRoutineDao.getReminderSettings()
+    }
+
+    suspend fun getOrCreateReminderSettings(): ReminderSettings {
+        val existing = dailyRoutineDao.getReminderSettingsDirect()
+        if (existing == null) {
+            val defaultSettings = ReminderSettings()
+            dailyRoutineDao.insertOrUpdateReminderSettings(defaultSettings)
+            return defaultSettings
+        }
+        return existing
+    }
+
+    suspend fun saveReminderSettings(settings: ReminderSettings) {
+        dailyRoutineDao.insertOrUpdateReminderSettings(settings)
+    }
 }

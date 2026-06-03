@@ -107,4 +107,42 @@ interface DailyRoutineDao {
 
     @Query("DELETE FROM contact_reminders WHERE id = :id")
     suspend fun deleteContactReminder(id: Long)
+
+    // --- Daily Mission (Morning/Today's Mission) ---
+    @Query("SELECT * FROM daily_missions WHERE date = :date")
+    fun getDailyMission(date: String): Flow<DailyMission?>
+
+    @Query("SELECT * FROM daily_missions WHERE date = :date")
+    suspend fun getDailyMissionDirect(date: String): DailyMission?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateDailyMission(mission: DailyMission)
+
+
+    // --- Night Audit (Evening Reflection) ---
+    @Query("SELECT * FROM night_audits WHERE date = :date")
+    fun getNightAudit(date: String): Flow<NightAudit?>
+
+    @Query("SELECT * FROM night_audits WHERE date = :date")
+    suspend fun getNightAuditDirect(date: String): NightAudit?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateNightAudit(audit: NightAudit)
+
+    @Query("SELECT * FROM night_audits ORDER BY date DESC")
+    fun getAllNightAudits(): Flow<List<NightAudit>>
+
+    @Query("SELECT * FROM night_audits ORDER BY date DESC")
+    suspend fun getAllNightAuditsDirect(): List<NightAudit>
+
+
+    // --- Reminder Settings ---
+    @Query("SELECT * FROM reminder_settings WHERE id = 1")
+    fun getReminderSettings(): Flow<ReminderSettings?>
+
+    @Query("SELECT * FROM reminder_settings WHERE id = 1")
+    suspend fun getReminderSettingsDirect(): ReminderSettings?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateReminderSettings(settings: ReminderSettings)
 }

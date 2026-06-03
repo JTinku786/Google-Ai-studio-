@@ -19,11 +19,34 @@ android {
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     ndk {
-        abiFilters.add("arm64-v8a")
+        abiFilters.addAll(listOf("arm64-v8a", "x86_64"))
     }
   }
 
-  val hasValidNdk = file("/opt/android/sdk/ndk").listFiles()?.any { it.resolve("source.properties").exists() } == true || project.hasProperty("buildNative")
+  // Detect NDK in standard paths for robust building on Mac, Windows, and Linux/AI Studio.
+  val hasValidNdk = run {
+      val localNdk = file("/opt/android/sdk/ndk")
+      val envNdk = System.getenv("ANDROID_NDK_HOME")?.let { file(it) }
+      val localProperties = file("${rootDir}/local.properties")
+      var sdkDirNdk: File? = null
+      if (localProperties.exists()) {
+          val lines = localProperties.readLines()
+          for (line in lines) {
+              if (line.startsWith("ndk.dir=")) {
+                  val path = line.substringAfter("ndk.dir=").trim()
+                  return@run file(path).exists()
+              }
+              if (line.startsWith("sdk.dir=")) {
+                  val path = line.substringAfter("sdk.dir=").trim()
+                  sdkDirNdk = file("${path}/ndk")
+              }
+          }
+      }
+      (localNdk.exists() && localNdk.listFiles()?.isNotEmpty() == true) ||
+      (sdkDirNdk?.exists() == true && sdkDirNdk.listFiles()?.isNotEmpty() == true) ||
+      (envNdk?.exists() == true && envNdk.listFiles()?.isNotEmpty() == true) ||
+      project.hasProperty("buildNative")
+  }
   if (hasValidNdk) {
       externalNativeBuild {
           cmake {

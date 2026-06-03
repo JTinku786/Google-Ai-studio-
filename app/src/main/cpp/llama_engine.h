@@ -3,8 +3,15 @@
 
 #include <string>
 
+struct llama_model;
+struct llama_context;
+
 // Header declarations representing local native LLM engine structures.
 class LlamaEngine {
+private:
+    struct llama_model* model = nullptr;
+    struct llama_context* ctx = nullptr;
+
 public:
     LlamaEngine();
     ~LlamaEngine();

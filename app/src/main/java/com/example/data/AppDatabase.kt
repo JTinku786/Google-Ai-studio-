@@ -15,9 +15,12 @@ import androidx.room.RoomDatabase
         MealLog::class,
         DailyContent::class,
         VoiceNote::class,
-        ContactReminder::class
+        ContactReminder::class,
+        DailyMission::class,
+        NightAudit::class,
+        ReminderSettings::class
     ],
-    version = 3,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -8,6 +8,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -113,12 +114,16 @@ fun RoutineDashboardScreen(
     val voiceNotes by viewModel.voiceNotes.collectAsStateWithLifecycle()
     val contactReminders by viewModel.contactReminders.collectAsStateWithLifecycle()
     val dailyContent by viewModel.dailyContent.collectAsStateWithLifecycle()
+    val isOnboarded by viewModel.isOnboarded.collectAsStateWithLifecycle()
 
     // Manage a local UI setting for theme choice, default to Saffron Slate
     var currentThemeState by remember { mutableStateOf(AppThemePreset.SAFFRON_SLATE) }
     val currentTheme = currentThemeState
 
-    Scaffold(
+    if (!isOnboarded) {
+        OnboardingScreen(viewModel = viewModel, currentTheme = currentTheme)
+    } else {
+        Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
             CenterAlignedTopAppBar(
@@ -241,6 +246,7 @@ fun RoutineDashboardScreen(
             }
         }
     }
+    }
 }
 
 // ==================== TAB 0: TODAY DASHBOARD ====================
@@ -262,6 +268,14 @@ fun DashboardTab(
     var currentMood by remember { mutableStateOf("Calm") }
     var currentEnergyLevel by remember { mutableIntStateOf(7) }
 
+    // Night Audit Form State variables
+    var wokeOnTimeInput by remember { mutableStateOf(true) }
+    var hardestTaskCompInput by remember { mutableStateOf(true) }
+    var foodQualityInput by remember { mutableStateOf("Good") }
+    var whatWentWellInput by remember { mutableStateOf("") }
+    var whatFailedInput by remember { mutableStateOf("") }
+    var oneImprovementInput by remember { mutableStateOf("") }
+
     // State expansion keys for daily spark list items
     var quoteExpanded by remember { mutableStateOf(false) }
     var gitaExpanded by remember { mutableStateOf(false) }
@@ -272,6 +286,10 @@ fun DashboardTab(
     // Live AI planners states
     val isPlanGenerating by viewModel.isPlanGenerating.collectAsStateWithLifecycle()
     val aiPlanOutput by viewModel.aiPlanOutput.collectAsStateWithLifecycle()
+    val dailyMission by viewModel.dailyMission.collectAsStateWithLifecycle()
+    val isMissionGenerating by viewModel.isMissionGenerating.collectAsStateWithLifecycle()
+    val nightAudit by viewModel.nightAudit.collectAsStateWithLifecycle()
+    val isAuditGenerating by viewModel.isAuditGenerating.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -288,11 +306,229 @@ fun DashboardTab(
                 fontWeight = FontWeight.Black,
                 color = theme.textPrim
             )
-            Text(
-                text = "Today is your day of positive discipline & spiritual silence.",
-                fontSize = 13.sp,
-                color = theme.textMuted
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (profile.selectedGgufPath.isNotEmpty()) Color(0xFF4CAF50) else Color(0xFFFF9800))
+                )
+                Text(
+                    text = if (profile.selectedGgufPath.isNotEmpty()) "Private GGUF Engine Active" else "Offline Coach Mode Enabled",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = theme.accentSaffron
+                )
+            }
+        }
+
+        // DISCIPLINE SCORE MAPS & STREAKS CARD
+        Card(
+            modifier = Modifier.fillMaxWidth().testTag("discipline_score_card"),
+            colors = CardDefaults.cardColors(containerColor = theme.surface),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(0.5.dp, theme.border)
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(CircleShape)
+                        .background(theme.surfaceMedium),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "${dailyMission.disciplineScore}",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black,
+                            color = theme.accentSaffron
+                        )
+                        Text(
+                            text = "PTS",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = theme.textMuted
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "DAILY DISCIPLINE INDEX",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = theme.textMuted,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { (dailyMission.disciplineScore.toFloat() / 100f).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                        color = theme.accentSaffron,
+                        trackColor = theme.border
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "🔥 Streak: 5 Days",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = theme.textPrim
+                        )
+                        Text(
+                            text = "🏆 Best: 12",
+                            fontSize = 10.sp,
+                            color = theme.textMuted
+                        )
+                    }
+                }
+            }
+        }
+
+        // MORNING COMMAND CENTER LOOP (Phase 2)
+        Card(
+            modifier = Modifier.fillMaxWidth().testTag("morning_command_card"),
+            colors = CardDefaults.cardColors(containerColor = theme.surface),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(0.5.dp, theme.border)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.Star, contentDescription = null, tint = theme.accentSaffron, modifier = Modifier.size(18.dp))
+                        Text(
+                            text = "TODAY'S MISSION COMMANDS",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black,
+                            color = theme.textPrim,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                    if (dailyMission.isGenerated) {
+                        Text(
+                            text = "GENERATED",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF4CAF50),
+                            modifier = Modifier
+                                .background(Color(0xFF4CAF50).copy(0.12f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                if (!dailyMission.isGenerated) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "Rise and shine Tammudu/Chelli. Your day's strategy matrix is locked.",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = theme.textMuted,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = { viewModel.generateDailyMission() },
+                            modifier = Modifier.fillMaxWidth().height(42.dp).testTag("generate_mission_button"),
+                            colors = ButtonDefaults.buttonColors(containerColor = theme.accentSaffron)
+                        ) {
+                            if (isMissionGenerating) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                            } else {
+                                Text("Generate Today's Missions", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                } else {
+                    // AI Morning Coach command text
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(theme.bg, RoundedCornerShape(12.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            text = dailyMission.aiMorningCommand,
+                            fontSize = 12.sp,
+                            color = theme.textPrim,
+                            lineHeight = 17.sp,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "HARDEST TASK FIRST (25 PTS)",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        color = theme.accentGold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(theme.surfaceMedium)
+                            .clickable { viewModel.toggleHardestTask(!dailyMission.hardestTaskCompleted) }
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (dailyMission.hardestTaskCompleted) Icons.Default.CheckCircle else Icons.Default.Add,
+                            contentDescription = null,
+                            tint = if (dailyMission.hardestTaskCompleted) theme.accentSaffron else theme.textMuted,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = dailyMission.hardestTask,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (dailyMission.hardestTaskCompleted) theme.textMuted else theme.textPrim,
+                            style = if (dailyMission.hardestTaskCompleted) androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough) else androidx.compose.ui.text.TextStyle()
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "CORE MISSIONS FOR TODAY",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        color = theme.accentGold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    listOf(dailyMission.missionOne, dailyMission.missionTwo, dailyMission.missionThree).forEachIndexed { i, mText ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = theme.accentGold, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = mText, fontSize = 12.sp, color = theme.textPrim)
+                        }
+                    }
+                }
+            }
         }
 
         // VITALS SUMMARY CARDS ROW
@@ -645,6 +881,226 @@ fun DashboardTab(
                         )
                     }
                     Toast.makeText(context, "Day Plan saved securely in local Journal!", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        // PRATIDINAM EVENING REVIEW & NIGHT AUDIT (Phase 3)
+        Card(
+            modifier = Modifier.fillMaxWidth().testTag("night_audit_card"),
+            colors = CardDefaults.cardColors(containerColor = theme.surface),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(1.dp, theme.accentSaffron.copy(0.4f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite, // Present icon substitute for Moon
+                        contentDescription = null,
+                        tint = theme.accentSaffron,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "SECURE NIGHT AUDIT CENTER",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black,
+                        color = theme.textPrim,
+                        letterSpacing = 1.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                if (!nightAudit.isCompleted) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "Account for today's Karma privately to build tomorrow's momentum. Complete all indices:",
+                            fontSize = 12.sp,
+                            color = theme.textMuted
+                        )
+
+                        // Wake up switch
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Woke up on schedule (${profile.wakeUpTime})?", fontSize = 12.sp, color = theme.textPrim)
+                            Switch(
+                                checked = wokeOnTimeInput,
+                                onCheckedChange = { wokeOnTimeInput = it },
+                                colors = SwitchDefaults.colors(checkedThumbColor = theme.accentSaffron)
+                            )
+                        }
+
+                        // Hardest task switch
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Targeted hardest task first with focus?", fontSize = 12.sp, color = theme.textPrim)
+                            Switch(
+                                checked = hardestTaskCompInput,
+                                onCheckedChange = { hardestTaskCompInput = it },
+                                colors = SwitchDefaults.colors(checkedThumbColor = theme.accentSaffron)
+                            )
+                        }
+
+                        // Food quality selector chooser
+                        Column {
+                            Text("Diet Quality: $foodQualityInput", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = theme.textPrim)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                listOf("Great", "Good", "Okay", "Poor").forEach { valQ ->
+                                    val act = foodQualityInput == valQ
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (act) theme.accentSaffron else theme.surfaceMedium)
+                                            .clickable { foodQualityInput = valQ }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(valQ, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (act) Color.White else theme.textPrim)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Open text fields
+                        OutlinedTextField(
+                            value = whatWentWellInput,
+                            onValueChange = { whatWentWellInput = it },
+                            label = { Text("What went exceptionally well today?", color = theme.textMuted, fontSize = 11.sp) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = theme.textPrim,
+                                unfocusedTextColor = theme.textPrim,
+                                focusedBorderColor = theme.accentSaffron,
+                                unfocusedBorderColor = theme.border
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = whatFailedInput,
+                            onValueChange = { whatFailedInput = it },
+                            label = { Text("Where did focus leak? (Weakness/Distractions)", color = theme.textMuted, fontSize = 11.sp) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = theme.textPrim,
+                                unfocusedTextColor = theme.textPrim,
+                                focusedBorderColor = theme.accentSaffron,
+                                unfocusedBorderColor = theme.border
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = oneImprovementInput,
+                            onValueChange = { oneImprovementInput = it },
+                            label = { Text("One improvement action tomorrow first thing", color = theme.textMuted, fontSize = 11.sp) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = theme.textPrim,
+                                unfocusedTextColor = theme.textPrim,
+                                focusedBorderColor = theme.accentSaffron,
+                                unfocusedBorderColor = theme.border
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Button(
+                            onClick = {
+                                viewModel.updateNightAuditMetrics(
+                                    wokeOnTime = wokeOnTimeInput,
+                                    hardestTaskCompleted = hardestTaskCompInput,
+                                    waterConsumedMl = trackerState.waterIntakeMl,
+                                    foodQuality = foodQualityInput,
+                                    mood = currentMood,
+                                    energyLevel = currentEnergyLevel,
+                                    whatWentWell = if (whatWentWellInput.isEmpty()) "Did daily routine" else whatWentWellInput,
+                                    whatFailed = if (whatFailedInput.isEmpty()) "None" else whatFailedInput,
+                                    oneThingToImprove = if (oneImprovementInput.isEmpty()) "Stay ultra disciplined" else oneImprovementInput
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth().height(44.dp).testTag("save_onboarding_answers_button"),
+                            colors = ButtonDefaults.buttonColors(containerColor = theme.accentSaffron)
+                        ) {
+                            if (isAuditGenerating) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                            } else {
+                                Text("Consolidate & Close Day Audit ✓", fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+                    }
+                } else {
+                    // Audit completed view
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(theme.bg, RoundedCornerShape(10.dp))
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("AUDIT COMPLETED SECURELY", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color(0xFF4CAF50))
+                                Text("Discipline quotient logged in offline Room.", fontSize = 10.sp, color = theme.textMuted)
+                            }
+                        }
+
+                        Text(
+                            text = "AI GURU REFLECTION",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            color = theme.accentGold,
+                            letterSpacing = 0.5.sp
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(theme.bg, RoundedCornerShape(12.dp))
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                text = nightAudit.aiReflection,
+                                fontSize = 12.sp,
+                                color = theme.textPrim,
+                                lineHeight = 17.sp,
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                            )
+                        }
+
+                        Text(
+                            text = "TOMORROW'S CORE MANDATE",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            color = theme.accentGold,
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = nightAudit.tomorrowCorrection,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = theme.accentSaffron
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Reset button in case they want to log again
+                        TextButton(
+                            onClick = { viewModel.resetNightAudit() },
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        ) {
+                            Text("Re-Audit / Reset Metrics", color = theme.textMuted, fontSize = 11.sp)
+                        }
+                    }
                 }
             }
         }
@@ -2097,6 +2553,42 @@ fun CoachSettingsTab(
                     }
                 }
 
+                val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                var showClearConfirm by remember { mutableStateOf(false) }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("SEC PRIVATE JOURNAL", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = theme.textMuted)
+                    TextButton(onClick = { showClearConfirm = true }) {
+                        Text("Clear Journal", color = theme.accentSaffron, fontSize = 11.sp)
+                    }
+                }
+
+                if (showClearConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showClearConfirm = false },
+                        title = { Text("Clear Conversation Journal?", color = theme.textPrim) },
+                        text = { Text("Are you sure you want to wipe all session history from local memory? This cannot be undone.", color = theme.textMuted) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                viewModel.clearChat()
+                                showClearConfirm = false
+                            }) {
+                                Text("Clear Everything", color = theme.accentSaffron)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showClearConfirm = false }) {
+                                Text("Cancel", color = theme.textMuted)
+                            }
+                        },
+                        containerColor = theme.surface
+                    )
+                }
+
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2105,10 +2597,17 @@ fun CoachSettingsTab(
                     colors = CardDefaults.cardColors(containerColor = theme.surface),
                     border = BorderStroke(1.dp, theme.border)
                 ) {
+                    val listState = rememberLazyListState()
+                    LaunchedEffect(chatHistory.size) {
+                        if (chatHistory.isNotEmpty()) {
+                            listState.animateScrollToItem(chatHistory.size - 1)
+                        }
+                    }
+
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .weight(1f)
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -2139,27 +2638,57 @@ fun CoachSettingsTab(
                                     modifier = Modifier.fillMaxWidth(),
                                     contentAlignment = if (fromUser) Alignment.CenterEnd else Alignment.CenterStart
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .widthIn(max = 240.dp)
-                                            .clip(
-                                                RoundedCornerShape(
-                                                    topStart = 16.dp,
-                                                    topEnd = 16.dp,
-                                                    bottomStart = if (fromUser) 16.dp else 4.dp,
-                                                    bottomEnd = if (fromUser) 4.dp else 16.dp
-                                                )
-                                            )
-                                            .background(if (fromUser) theme.surfaceMedium else theme.bg)
-                                            .border(0.5.dp, theme.border, RoundedCornerShape(16.dp))
-                                            .padding(10.dp)
+                                    Column(
+                                        modifier = Modifier.widthIn(max = 240.dp)
                                     ) {
-                                        Text(
-                                            text = message.second,
-                                            fontSize = 12.sp,
-                                            color = theme.textPrim,
-                                            lineHeight = 16.sp
-                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(
+                                                    RoundedCornerShape(
+                                                        topStart = 16.dp,
+                                                        topEnd = 16.dp,
+                                                        bottomStart = if (fromUser) 16.dp else 4.dp,
+                                                        bottomEnd = if (fromUser) 4.dp else 16.dp
+                                                    )
+                                                )
+                                                .background(if (fromUser) theme.surfaceMedium else theme.bg)
+                                                .border(0.5.dp, theme.border, RoundedCornerShape(16.dp))
+                                                .padding(10.dp)
+                                        ) {
+                                            Text(
+                                                text = message.second,
+                                                fontSize = 12.sp,
+                                                color = theme.textPrim,
+                                                lineHeight = 16.sp
+                                            )
+                                        }
+                                        if (!fromUser) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                                                horizontalArrangement = Arrangement.End,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                IconButton(
+                                                    onClick = {
+                                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(message.second))
+                                                        Toast.makeText(context, "Copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Share, contentDescription = "Copy", tint = theme.textMuted, modifier = Modifier.size(12.dp))
+                                                }
+                                                val isLast = message == chatHistory.last()
+                                                if (isLast) {
+                                                    IconButton(
+                                                        onClick = { viewModel.regenerateLastMessage(activeCoachSpecialty) },
+                                                        modifier = Modifier.size(24.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.Refresh, contentDescription = "Regenerate", tint = theme.accentGold, modifier = Modifier.size(12.dp))
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
